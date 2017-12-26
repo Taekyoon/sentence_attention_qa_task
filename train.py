@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--dev_batch_size', type=int, default=15)
     parser.add_argument('--lr', type=float, default=0.5)
     parser.add_argument('--char_emb_dim', type=int, default=16)
-    parser.add_argument('--word_emb_dim', type=int, default=100)
+    parser.add_argument('--word_emb_dim', type=int, default=300)
     parser.add_argument('--char_filter_dim', type=int, default=100)
     parser.add_argument('--n_gram_sizes', type=Tuple[int, ...], default=[5])
     parser.add_argument('--hidden_dim', type=int, default=100)
@@ -35,16 +35,16 @@ def main():
     parser.add_argument('--bidirectional', default=True)
 
     parser.add_argument('--log', default='original')
-    parser.add_argument('--gpu_device', default=1)
+    parser.add_argument('--gpu_device', default=3)
     parser.add_argument('--size', default='')
-    parser.add_argument('--glove', default='../data/glove/glove.6B.100d.txt')
+    parser.add_argument('--glove', default='../data/glove/glove.840B.300d.txt')
     parser.add_argument('--decay_rate', default=0.999)
     parser.add_argument('--checkpoint', default=200)
     parser.add_argument('--cuda_set', default=True)
     parser.add_argument('--seed', default=133)
     parser.add_argument('--log_output', default=True)
     parser.add_argument('--max_passage_len', default=None)
-    parser.add_argument('--log_file_name', default="sent_attention_batch_15_add_query_hidden")
+    parser.add_argument('--log_file_name', default="revised_sent_attention")
     parser.add_argument('--sent_attention', default=True)
 
     args = parser.parse_args()
@@ -116,13 +116,11 @@ def main():
 
     print("\n===================       Start Train         ======================")
     for epoch in range(args.epoch):
-        '''
         if epoch > 2:
-            lr = args.lr * 0.5
+            lr = args.lr * 0.8
             for param_group in optimizer.param_groups:
                 print("learning rate change")
                 param_group['lr'] = lr
-        '''
 
         train_loss = AverageMeter()
         start_acc = AverageMeter()

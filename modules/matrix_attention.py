@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+
 class MatrixAttention(nn.Module):
     def __init__(self,
                  similarity_function = lambda x, y : x * y) -> None:

@@ -9,6 +9,7 @@ class MultiDimLinear(nn.Module):
                  output_dim: int,
                  dropout: float = .0,
                  bias: bool = True,
+                 bias_start: float = None,
                  trainable: bool = True) -> None:
         super(MultiDimLinear, self).__init__()
         self.input_dim = input_dim
@@ -20,6 +21,8 @@ class MultiDimLinear(nn.Module):
 
         if not trainable:
             self.linear.parameters().requires_grad = False
+        if bias_start:
+            self.linear.bias.data.fill_(bias_start)
 
     def forward(self, inputs: torch.Tensor) -> torch.FloatTensor:
         '''

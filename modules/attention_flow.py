@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
+from modules.utils import relu
 
 from modules.matrix_attention import MatrixAttention
 from modules.linear import MultiDimLinear
@@ -12,9 +12,9 @@ class AttentionFlow(nn.Module):
                  input_dim: int) -> None:
         super(AttentionFlow, self).__init__()
 
-        self.input_dim = input_dim * 6
+        self.input_dim = input_dim * 3
 
-        self.linear = MultiDimLinear(self.input_dim, 1)
+        self.linear = MultiDimLinear(self.input_dim, 1, bias=True, bias_start=.0)
         self.matrix_attention = MatrixAttention(self.similarity_function)
 
     def forward(self,
@@ -51,13 +51,3 @@ class AttentionFlow(nn.Module):
         S = self.linear(prime_S)
 
         return S
-
-    def mask_matrix(self,
-                    matrix: torch.FloatTensor,
-                    mask_1d: torch.FloatTensor) -> torch.FloatTensor:
-        pass
-
-    def mask_vector(self,
-                    vector: torch.FloatTensor,
-                    mask_1d: torch.FloatTensor) -> torch.FloatTensor:
-        pass

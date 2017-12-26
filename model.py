@@ -47,11 +47,15 @@ class Bidaf(nn.Module):
         attn_flow_output_dim = hidden_dim * 8
 
         if sent_attention:
-            self.sentence_encoder = RNNBaseModule(attn_flow_output_dim, hidden_dim, dropout=dropout,
+            residual_dim = hidden_dim * 2
+
+            self.start_residual_encoding = MultiDimLinear(attn_flow_output_dim, residual_dim, dropout=dropout, bias=True, bias_start=.0)
+            self.sentence_encoder = RNNBaseModule(residual_dim, hidden_dim, dropout=dropout,
                                                   bidirectional=bidirectional)
             self.sent_attention_flow = AttentionFlow(hidden_dim)
-            sent_attn_flow_output_dim = hidden_dim * 14
-            model_layer_input_dim = sent_attn_flow_output_dim
+            sent_attn_flow_output_dim = hidden_dim * 8
+            self.end_residual_encoding = MultiDimLinear(sent_attn_flow_output_dim, residual_dim, dropout=dropout)
+            model_layer_input_dim = residual_dim
         else:
             model_layer_input_dim = attn_flow_output_dim
 
@@ -61,8 +65,8 @@ class Bidaf(nn.Module):
         self.end_index_encoder_layer = RNNBaseModule(model_layer_input_dim + hidden_dim * 6, hidden_dim,
                                                      dropout=dropout, bidirectional=bidirectional)
 
-        self.start_logits_linear = MultiDimLinear(model_layer_input_dim + hidden_dim * 2, 1, dropout=dropout)
-        self.end_logits_linear = MultiDimLinear(model_layer_input_dim + hidden_dim * 2, 1, dropout=dropout)
+        self.start_logits_linear = MultiDimLinear(model_layer_input_dim + hidden_dim * 2, 1, dropout=dropout, bias=True, bias_start=.0)
+        self.end_logits_linear = MultiDimLinear(model_layer_input_dim + hidden_dim * 2, 1, dropout=dropout, bias=False, bias_start=.0)
 
     def forward(self,
                 paragraph, query,
@@ -83,16 +87,19 @@ class Bidaf(nn.Module):
                                             passage_encoded * context2query], dim=-1)
 
         if self.sent_attention:
-            sent_represent_matrix = self.word_aligned_sentence_encoder_layer(passage_encoded,
-                                                                             attention_flow_vectors,
+            sentence_encode_input = relu(self.start_residual_encoding(attention_flow_vectors))
+
+            sent_represent_matrix = self.word_aligned_sentence_encoder_layer(sentence_encode_input,
                                                                              sent_start, sent_end,
                                                                              sent_mask,
                                                                              query_hidden_state=query_hidden_states)
-            sent2context, context2sent = self.sent_attention_flow(passage_encoded,
+            sent2context, context2sent = self.sent_attention_flow(sentence_encode_input,
                                                                   sent_represent_matrix, dm=dm, qm=sent_mask)
-            model_layer_input = torch.cat([attention_flow_vectors, sent2context,
-                                           passage_encoded * sent2context,
-                                           passage_encoded * context2sent], dim=-1)
+            sent_attention_flow_vectors = torch.cat([sentence_encode_input, sent2context,
+                                                     sentence_encode_input * sent2context,
+                                                     sentence_encode_input * context2sent], dim=-1)
+            output_sent_attn_vectors = relu(self.end_residual_encoding(sent_attention_flow_vectors))
+            model_layer_input = sentence_encode_input + output_sent_attn_vectors
         else:
             model_layer_input = attention_flow_vectors
 
@@ -145,10 +152,9 @@ class Bidaf(nn.Module):
 
         return context_embedded, hidden_state
 
-    def word_aligned_sentence_encoder_layer(self, passage_encoded, high_level_fusion_vector,
-                                            sent_start, sent_end, sent_mask, query_hidden_state=None):
-        batch_size = high_level_fusion_vector.size(0)
-        feature_dim = passage_encoded.size(-1)
+    def word_aligned_sentence_encoder_layer(self, input, sent_start, sent_end, sent_mask, query_hidden_state=None):
+        batch_size = input.size(0)
+        feature_dim = input.size(-1)
         max_sent_len = torch.max(sent_mask.sum(dim=-1)).cpu().data.tolist()[0]
 
         batch_matrix_list = list()
@@ -160,11 +166,10 @@ class Bidaf(nn.Module):
                     initial_hidden_vector = self.sentence_encoder.init_hidden(1)
                 else:
                     initial_hidden_vector = query_hidden_state[:, i, :].unsqueeze(1).contiguous()
+                sent_encode_input = input[i, sent_start[i][s_i]:sent_end[i][s_i], :].unsqueeze(0)
                 sent_encoded, _ = self.sentence_encoder(
-                    high_level_fusion_vector[i, sent_start[i][s_i]:sent_end[i][s_i], :].unsqueeze(0),
-                    hidden_state=initial_hidden_vector)
-                sent_passage_encoded = passage_encoded[i, sent_start[i][s_i]:sent_end[i][s_i], :].unsqueeze(0)
-                word_attention = softmax(torch.mul(sent_encoded, sent_passage_encoded).sum(dim=-1))
+                    sent_encode_input, hidden_state=initial_hidden_vector)
+                word_attention = softmax(torch.mul(sent_encoded, sent_encode_input).sum(dim=-1))
                 sent_vector = weighted_sum(sent_encoded, word_attention)
 
                 sent_vectors.append(sent_vector)
